@@ -1,0 +1,106 @@
+Good moment to map the full picture before going deeper. Here's the complete pipeline, file by file, in execution order:
+
+---
+
+## 1. Lexer layer
+| File | Responsibility |
+|---|---|
+| `TokenType.ts` | Enum of every token kind ✅ |
+| `Token.ts` | Data shape of a single token ✅ |
+| `Keywords.ts` | Reserved word tables + `classifyIdentifier()` + custom operator registry |
+| `LexerDiagnostic.ts` | Lightweight error record |
+| `Lexer.ts` | The scanner itself |
+| `TokenStream.ts` | Parser-facing wrapper, skips trivia, provides lookahead |
+
+---
+
+## 2. AST layer
+| File | Responsibility |
+|---|---|
+| `ASTNode.ts` | Base interface every node implements |
+| `Modifiers.ts` | `VisibilityType`, `MutabilityType`, `StorageType` enums |
+| `ProgramNode.ts` | Root node, holds all top-level declarations |
+| `StatementNode.ts` | Base for all statement nodes |
+| `ExpressionNode.ts` | Base for all expression nodes |
+| `VariableDeclarationNode.ts` | `int x = 42` |
+| `FunctionDeclarationNode.ts` | `function foo(int x) : int { }` |
+| `ClassDeclarationNode.ts` | `class Foo extends Bar { }` |
+| `IfStatementNode.ts` | `if / else` |
+| `WhileStatementNode.ts` | `while` |
+| `ForStatementNode.ts` | `for` |
+| `ReturnStatementNode.ts` | `return` |
+| `BlockStatementNode.ts` | `{ ... }` |
+| `ExpressionStatementNode.ts` | A standalone expression used as a statement |
+| `BinaryExpressionNode.ts` | `a + b`, `a == b` |
+| `UnaryExpressionNode.ts` | `!x`, `++x` |
+| `AssignmentExpressionNode.ts` | `x = 5`, `x += 1` |
+| `CallExpressionNode.ts` | `foo(a, b)` |
+| `MemberAccessNode.ts` | `obj.field` |
+| `IndexAccessNode.ts` | `arr[0]` |
+| `IdentifierNode.ts` | Any name reference |
+| `LiteralNode.ts` | Integer, float, string, char, boolean, null literals |
+| `NewExpressionNode.ts` | `new Foo(a, b)` |
+| `ThisExpressionNode.ts` | `this` |
+| `SuperExpressionNode.ts` | `super` |
+| `CustomOperatorNode.ts` | `√x`, `∑n` |
+| `EnumDeclarationNode.ts` | `enum Direction { }` |
+
+---
+
+## 3. Parser layer
+| File | Responsibility |
+|---|---|
+| `Parser.ts` | Recursive descent parser, consumes `TokenStream`, produces AST |
+
+---
+
+## 4. Semantic / Binder layer
+| File | Responsibility |
+|---|---|
+| `Symbol.ts` | Base symbol shape (name, kind, declaration node) |
+| `SymbolKind.ts` | Enum: Variable, Function, Class, Method, Field, Parameter, Enum |
+| `Scope.ts` | Scope chain — defines and resolves symbols |
+| `Binder.ts` | Walks AST, builds symbol table, attaches symbols to nodes |
+
+---
+
+## 5. Type Checker layer
+| File | Responsibility |
+|---|---|
+| `TypeSymbol.ts` | Represents a resolved type |
+| `TypeRegistry.ts` | Holds all known types (builtins + user-defined classes) |
+| `Diagnostic.ts` | Full diagnostic record used by analyser and extension |
+| `TypeChecker.ts` | Walks bound AST, resolves and validates types, emits diagnostics |
+
+---
+
+## 6. Language Service layer
+| File | Responsibility |
+|---|---|
+| `LanguageService.ts` | Orchestrator — runs the full pipeline for a document |
+| `CompletionProvider.ts` | Scope-aware suggestions, member access, keywords, types |
+| `HoverProvider.ts` | Type info and doc comments on hover |
+| `DiagnosticsProvider.ts` | Publishes lexer + type checker diagnostics to VS Code |
+| `SignatureHelpProvider.ts` | Parameter hints while typing a function call |
+| `DefinitionProvider.ts` | Go to declaration |
+| `ReferencesProvider.ts` | Find all usages |
+| `RenameProvider.ts` | Rename symbol across all files |
+
+---
+
+## 7. Project Index layer
+| File | Responsibility |
+|---|---|
+| `SourceFile.ts` | One analysed file — holds its AST, symbols, diagnostics |
+| `ProjectIndex.ts` | Workspace-wide registry of all files and classes |
+
+---
+
+## 8. Extension entry point
+| File | Responsibility |
+|---|---|
+| `Main.ts` | VS Code `activate()` / `deactivate()`, wires everything together |
+
+---
+
+That's the full picture. Each layer depends only on the one above it — the type checker never touches the lexer directly, the language service never re-parses source. Clean one-way dependency flow throughout.

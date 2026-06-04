@@ -1,0 +1,71 @@
+{
+  "name": "qc-language",
+  "displayName": "QC Language Support",
+  "description": "Syntax highlighting and transpiler integration for .qc files",
+  "version": "0.1.0",
+  "icon": "icons/quantc-icon.svg",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:qc",
+    "onCommand:qc.compileAndRun"
+  ],
+  "main": "./dist/Main.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "qc",
+        "aliases": [
+          "QC",
+          "qc"
+        ],
+        "extensions": [
+          ".qc"
+        ],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icons/quantc-icon.svg",
+          "dark": "./icons/quantc-icon.svg"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "qc",
+        "scopeName": "source.qc",
+        "path": "./syntaxes/qc-tmLanguage.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "qc.compileAndRun",
+        "title": "QC: Compile and Run",
+        "category": "QC"
+      }
+    ]
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/oksimvey/quantcextension.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/oksimvey/quantcextension/issues"
+  },
+  "homepage": "https://github.com/oksimvey/quantcextension#readme",
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "@types/vscode": "^1.120.0",
+    "typescript": "^6.0.3"
+  }
+}
