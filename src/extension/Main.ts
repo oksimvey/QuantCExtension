@@ -3,53 +3,55 @@ import { BuiltInTypes, setupTypes } from "./ast/setup/BuiltInTypes";
 
 import { Keywords, setupKeywords } from "./ast/setup/Keywords";
 
+import { LexerResult } from "./lexer/LexerResult";
+
 import { setupOperators, BuiltInOperators } from "./ast/setup/BuiltInOperators";
-import { scanStatements } from "./parser/ParserUtils";
+import { scanStatements } from "./lexer/Lexer";
 
-
-
-export function scan(doc: vscode.TextDocument) {
-
+export function scan(doc: vscode.TextDocument, diagnostics: vscode.DiagnosticCollection) {
+  
+  const errors: vscode.Diagnostic[] = [];
 
   const text: string = doc.getText();
 
   const channel = vscode.window.createOutputChannel("Lexer Debug");
   channel.show(true);
 
-  const statements = scanStatements(text);
+  const scanResult: LexerResult = scanStatements(text);
+
+  const statements = scanResult.statements;
+
+  for (const element of scanResult.diagnostics) {
+    errors.push(element);
+  }
 
   channel.appendLine("STATEMENTS:");
   for (let i = 0; i < statements.length; i++) {
     const s = statements[i];
-    channel.appendLine(
-      `[${i}] "${s.text}" (${s.start} → ${s.end})`,
-    );
+    channel.appendLine(`[${i}] "${s.text}" (${s.start} → ${s.end})`);
   }
+  diagnostics.set(doc.uri, errors);
 }
 
-
-
-
 export function activate(context: vscode.ExtensionContext) {
+
+  const diagnostics = vscode.languages.createDiagnosticCollection('QuantC');
+
   setupKeywords();
 
   setupTypes();
 
   setupOperators();
 
-
-
-
   function update(doc: vscode.TextDocument) {
-    if (doc.languageId !== "qc") return;
 
+    if (doc.languageId !== "qc") return;
   }
 
   context.subscriptions.push(
     vscode.workspace.onDidOpenTextDocument(update),
-    vscode.workspace.onDidSaveTextDocument(scan),
-    vscode.workspace.onDidChangeTextDocument((e) => update(e.document)),
-    vscode.workspace.onDidChangeTextDocument((e) => update(e.document)),
+    vscode.workspace.onDidSaveTextDocument((e) => scan(e, diagnostics)),
+    vscode.workspace.onDidChangeTextDocument((e) => update(e.document))
   );
 
   if (vscode.window.activeTextEditor) {
