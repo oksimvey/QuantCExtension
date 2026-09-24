@@ -399,7 +399,6 @@ QC_Circle* c = qc_circle_new(5.0f);
 printf("%f\n", qc_circle_area(c));
 qc_circle_free(c);
 ```
-
 ---
 
 ## Transpilation
