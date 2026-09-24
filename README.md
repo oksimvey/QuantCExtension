@@ -384,6 +384,7 @@ System.out.println(c.area());
 ### Python
 A Python binding (via `ctypes` / `pybind11`) is generated for all `public` symbols, allowing QuantC code to be imported as a Python module.
 
+
 ```python
 import quantc
 c = quantc.Circle(5.0)
