@@ -1,1 +1,41 @@
-import*as vscode from"vscode";import{LanguageService}from"./LanguageService";export class ReferencesProvider implements vscode.ReferenceProvider{constructor(private s:LanguageService){}provideReferences(d:vscode.TextDocument,p:vscode.Position){const r=d.getWordRangeAtPosition(p);if(!r)return[];const w=d.getText(r),e=w.replace(/[.*+?^$()|[\]{}\\]/g,"\\$&"),out:vscode.Location[]=[];for(const f of this.s.project.allFiles()){const re=new RegExp("\\b"+e+"\\b","g");let m:RegExpExecArray|null;while((m=re.exec(f.text))){const line=f.text.slice(0,m.index).split("\n").length-1,col=m.index-(f.text.lastIndexOf("\n",m.index-1)+1);out.push(new vscode.Location(vscode.Uri.parse(f.uri),new vscode.Position(line,col)))}}return out}}
+import * as vscode from "vscode";
+import { LanguageService } from "./LanguageService";
+import {
+  findWordOffsets,
+  offsetToPosition,
+} from "./TextUtils";
+
+export class ReferencesProvider
+  implements vscode.ReferenceProvider
+{
+  constructor(private readonly service: LanguageService) {}
+
+  provideReferences(
+    document: vscode.TextDocument,
+    position: vscode.Position,
+  ): vscode.Location[] {
+    const range = document.getWordRangeAtPosition(position);
+
+    if (!range) {
+      return [];
+    }
+
+    const word = document.getText(range);
+    const locations: vscode.Location[] = [];
+
+    for (const file of this.service.project.allFiles()) {
+      for (const offset of findWordOffsets(file.text, word)) {
+        const target = offsetToPosition(file.text, offset);
+
+        locations.push(
+          new vscode.Location(
+            vscode.Uri.parse(file.uri),
+            new vscode.Position(target.line, target.character),
+          ),
+        );
+      }
+    }
+
+    return locations;
+  }
+}

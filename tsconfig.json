@@ -2,11 +2,20 @@
   "compilerOptions": {
     "target": "ES2020",
     "module": "commonjs",
+    "moduleResolution": "node",
     "rootDir": "src/extension",
     "outDir": "dist",
     "strict": true,
     "esModuleInterop": true,
-    "types": ["vscode", "node"]
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "sourceMap": true,
+    "types": [
+      "vscode",
+      "node"
+    ]
   },
-  "include": ["src/extension"]
+  "include": [
+    "src/extension"
+  ]
 }

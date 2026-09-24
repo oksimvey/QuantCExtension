@@ -1,1 +1,44 @@
-import*as vscode from"vscode";import{LanguageService}from"./LanguageService";export class DefinitionProvider implements vscode.DefinitionProvider{constructor(private s:LanguageService){}provideDefinition(d:vscode.TextDocument,p:vscode.Position){const r=d.getWordRangeAtPosition(p);if(!r)return;const x=this.s.project.findDeclaration(d.getText(r));if(!x)return;const f=this.s.project.getFile(x.uri);if(!f)return;const line=f.text.slice(0,x.start).split("\n").length-1,col=x.start-(f.text.lastIndexOf("\n",x.start-1)+1);return new vscode.Location(vscode.Uri.parse(x.uri),new vscode.Position(line,col))}}
+import * as vscode from "vscode";
+import { LanguageService } from "./LanguageService";
+import { offsetToPosition } from "./TextUtils";
+
+export class DefinitionProvider
+  implements vscode.DefinitionProvider
+{
+  constructor(private readonly service: LanguageService) {}
+
+  provideDefinition(
+    document: vscode.TextDocument,
+    position: vscode.Position,
+  ): vscode.Location | undefined {
+    const range = document.getWordRangeAtPosition(position);
+
+    if (!range) {
+      return undefined;
+    }
+
+    const declaration = this.service.project.findDeclaration(
+      document.getText(range),
+    );
+
+    if (!declaration) {
+      return undefined;
+    }
+
+    const file = this.service.project.getFile(declaration.uri);
+
+    if (!file) {
+      return undefined;
+    }
+
+    const target = offsetToPosition(
+      file.text,
+      declaration.start,
+    );
+
+    return new vscode.Location(
+      vscode.Uri.parse(declaration.uri),
+      new vscode.Position(target.line, target.character),
+    );
+  }
+}
