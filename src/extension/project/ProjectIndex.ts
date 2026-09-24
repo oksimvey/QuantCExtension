@@ -1,1 +1,195 @@
-import{ClassDeclarationNode,FunctionDeclarationNode,ProgramNode,VariableDeclarationNode}from"../ast/Nodes";import{SourceFile}from"./SourceFile";export interface IndexedMember{name:string;typeName:string;kind:"field"|"method";parameters:{name:string;typeName:string}[];start:number;end:number;uri:string}export interface IndexedClass{name:string;baseClass?:string;members:IndexedMember[];start:number;end:number;uri:string}export class ProjectIndex{private files=new Map<string,SourceFile>();private classes=new Map<string,IndexedClass>();update(f:SourceFile){this.remove(f.uri);this.files.set(f.uri,f);this.index(f.uri,f.ast)}remove(uri:string){this.files.delete(uri);for(const[k,v]of this.classes)if(v.uri===uri)this.classes.delete(k)}getFile(u:string){return this.files.get(u)}allFiles(){return[...this.files.values()]}getClass(n:string){return this.classes.get(n)}allClasses(){return[...this.classes.values()]}classMembers(n:string){const out:IndexedMember[]=[],seen=new Set<string>();let c=this.classes.get(n);while(c){for(const m of c.members)if(!seen.has(m.name)){seen.add(m.name);out.push(m)}c=c.baseClass?this.classes.get(c.baseClass):undefined}return out}findDeclaration(n:string){for(const c of this.classes.values()){if(c.name===n)return{uri:c.uri,start:c.start,end:c.end};const m=this.classMembers(c.name).find(x=>x.name===n);if(m)return{uri:m.uri,start:m.start,end:m.end}}for(const f of this.files.values()){const s=f.symbols.find(x=>x.name===n);if(s)return{uri:f.uri,start:s.declaration.start,end:s.declaration.end}}return undefined}private index(uri:string,p:ProgramNode){for(const d of p.declarations)if(d.kind==="ClassDeclaration"){const c=d as ClassDeclarationNode;const members:IndexedMember[]=c.members.map(m=>m.kind==="FunctionDeclaration"?{name:m.name,typeName:(m as FunctionDeclarationNode).returnType.name,kind:"method",parameters:(m as FunctionDeclarationNode).parameters.map(x=>({name:x.name,typeName:x.type.name})),start:m.start,end:m.end,uri}:{name:m.name,typeName:(m as VariableDeclarationNode).type.name,kind:"field",parameters:[],start:m.start,end:m.end,uri});this.classes.set(c.name,{name:c.name,baseClass:c.baseClass,members,start:c.start,end:c.end,uri})}}}
+import {
+  ClassDeclarationNode,
+  FunctionDeclarationNode,
+  ProgramNode,
+  VariableDeclarationNode,
+} from "../ast/Nodes";
+import { SourceFile } from "./SourceFile";
+
+export interface IndexedMember {
+  name: string;
+  typeName: string;
+  kind: "field" | "method";
+  parameters: Array<{
+    name: string;
+    typeName: string;
+  }>;
+  start: number;
+  end: number;
+  uri: string;
+}
+
+export interface IndexedClass {
+  name: string;
+  baseClass?: string;
+  members: IndexedMember[];
+  start: number;
+  end: number;
+  uri: string;
+}
+
+export interface IndexedDeclaration {
+  uri: string;
+  start: number;
+  end: number;
+}
+
+export class ProjectIndex {
+  private readonly files = new Map<string, SourceFile>();
+  private readonly classes = new Map<string, IndexedClass>();
+
+  update(file: SourceFile): void {
+    this.remove(file.uri);
+    this.files.set(file.uri, file);
+    this.indexProgram(file.uri, file.ast);
+  }
+
+  remove(uri: string): void {
+    this.files.delete(uri);
+
+    for (const [name, declaration] of this.classes) {
+      if (declaration.uri === uri) {
+        this.classes.delete(name);
+      }
+    }
+  }
+
+  getFile(uri: string): SourceFile | undefined {
+    return this.files.get(uri);
+  }
+
+  allFiles(): SourceFile[] {
+    return [...this.files.values()];
+  }
+
+  getClass(name: string): IndexedClass | undefined {
+    return this.classes.get(name);
+  }
+
+  allClasses(): IndexedClass[] {
+    return [...this.classes.values()];
+  }
+
+  classMembers(name: string): IndexedMember[] {
+    const members: IndexedMember[] = [];
+    const seenMembers = new Set<string>();
+    const visitedClasses = new Set<string>();
+    let declaration = this.classes.get(name);
+
+    while (declaration && !visitedClasses.has(declaration.name)) {
+      visitedClasses.add(declaration.name);
+
+      for (const member of declaration.members) {
+        if (seenMembers.has(member.name)) {
+          continue;
+        }
+
+        seenMembers.add(member.name);
+        members.push(member);
+      }
+
+      declaration = declaration.baseClass
+        ? this.classes.get(declaration.baseClass)
+        : undefined;
+    }
+
+    return members;
+  }
+
+  findDeclaration(name: string): IndexedDeclaration | undefined {
+    const classDeclaration = this.classes.get(name);
+    if (classDeclaration) {
+      return {
+        uri: classDeclaration.uri,
+        start: classDeclaration.start,
+        end: classDeclaration.end,
+      };
+    }
+
+    for (const classInfo of this.classes.values()) {
+      const member = this.classMembers(classInfo.name).find(
+        (candidate) => candidate.name === name,
+      );
+
+      if (member) {
+        return {
+          uri: member.uri,
+          start: member.start,
+          end: member.end,
+        };
+      }
+    }
+
+    for (const file of this.files.values()) {
+      const symbol = file.symbols.find(
+        (candidate) => candidate.name === name,
+      );
+
+      if (symbol) {
+        return {
+          uri: file.uri,
+          start: symbol.declaration.start,
+          end: symbol.declaration.end,
+        };
+      }
+    }
+
+    return undefined;
+  }
+
+  private indexProgram(uri: string, program: ProgramNode): void {
+    for (const declaration of program.declarations) {
+      if (declaration.kind !== "ClassDeclaration") {
+        continue;
+      }
+
+      const classDeclaration = declaration as ClassDeclarationNode;
+      const members = classDeclaration.members.map((member) =>
+        this.indexMember(uri, member),
+      );
+
+      this.classes.set(classDeclaration.name, {
+        name: classDeclaration.name,
+        baseClass: classDeclaration.baseClass,
+        members,
+        start: classDeclaration.start,
+        end: classDeclaration.end,
+        uri,
+      });
+    }
+  }
+
+  private indexMember(
+    uri: string,
+    member: ClassDeclarationNode["members"][number],
+  ): IndexedMember {
+    if (member.kind === "FunctionDeclaration") {
+      const method = member as FunctionDeclarationNode;
+
+      return {
+        name: method.name,
+        typeName: method.returnType.name,
+        kind: "method",
+        parameters: method.parameters.map((parameter) => ({
+          name: parameter.name,
+          typeName: parameter.type.name,
+        })),
+        start: method.start,
+        end: method.end,
+        uri,
+      };
+    }
+
+    const field = member as VariableDeclarationNode;
+
+    return {
+      name: field.name,
+      typeName: field.type.name,
+      kind: "field",
+      parameters: [],
+      start: field.start,
+      end: field.end,
+      uri,
+    };
+  }
+}

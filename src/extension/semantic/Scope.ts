@@ -1,1 +1,24 @@
-import{QCSymbol}from"./Symbol";export class Scope{private s=new Map<string,QCSymbol>();constructor(readonly parent?:Scope){}define(x:QCSymbol){if(this.s.has(x.name))return false;this.s.set(x.name,x);return true}resolve(n:string):QCSymbol|undefined{return this.s.get(n)??this.parent?.resolve(n)}values(){return[...this.s.values()]}}
+import { QCSymbol } from "./Symbol";
+
+export class Scope {
+  private readonly symbols = new Map<string, QCSymbol>();
+
+  constructor(readonly parent?: Scope) {}
+
+  define(symbol: QCSymbol): boolean {
+    if (this.symbols.has(symbol.name)) {
+      return false;
+    }
+
+    this.symbols.set(symbol.name, symbol);
+    return true;
+  }
+
+  resolve(name: string): QCSymbol | undefined {
+    return this.symbols.get(name) ?? this.parent?.resolve(name);
+  }
+
+  values(): QCSymbol[] {
+    return [...this.symbols.values()];
+  }
+}

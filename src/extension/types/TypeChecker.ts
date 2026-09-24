@@ -1,1 +1,168 @@
-import{ClassDeclarationNode,FunctionDeclarationNode,ProgramNode,VariableDeclarationNode}from"../ast/Nodes";import{MutabilityType}from"../ast/Modifiers";import{QCDiagnostic}from"./Diagnostic";import{TypeRegistry}from"./TypeRegistry";export class TypeChecker{check(p:ProgramNode,r:TypeRegistry){const out:QCDiagnostic[]=[];for(const d of p.declarations)if(d.kind==="ClassDeclaration")r.registerClass(d as ClassDeclarationNode);const ct=(n:string,s:number,e:number)=>{if(n!=="auto"&&!r.has(n))out.push({start:s,end:e,message:"Unknown type '"+n+"'.",severity:"error",code:"unknown-type"})};const cv=(v:VariableDeclarationNode)=>{ct(v.type.name,v.start,v.end);if((v.modifiers.mutability===MutabilityType.Const||v.modifiers.mutability===MutabilityType.Constexpr)&&!v.initializer)out.push({start:v.start,end:v.end,message:v.modifiers.mutability+" variable '"+v.name+"' must be initialized.",severity:"error",code:"const-init"})};for(const d of p.declarations)if(d.kind==="VariableDeclaration")cv(d as VariableDeclarationNode);else if(d.kind==="FunctionDeclaration"){const f=d as FunctionDeclarationNode;ct(f.returnType.name,f.start,f.end);for(const x of f.parameters)ct(x.type.name,x.start,x.end)}else if(d.kind==="ClassDeclaration")for(const m of(d as ClassDeclarationNode).members)if(m.kind==="VariableDeclaration")cv(m as VariableDeclarationNode);else{const f=m as FunctionDeclarationNode;ct(f.returnType.name,f.start,f.end);for(const x of f.parameters)ct(x.type.name,x.start,x.end)}return out}}
+import {
+  ClassDeclarationNode,
+  FunctionDeclarationNode,
+  ProgramNode,
+  TypeRef,
+  VariableDeclarationNode,
+} from "../ast/Nodes";
+import { MutabilityType } from "../ast/Modifiers";
+import { QCDiagnostic } from "./Diagnostic";
+import { TypeRegistry } from "./TypeRegistry";
+
+export class TypeChecker {
+  check(program: ProgramNode, registry: TypeRegistry): QCDiagnostic[] {
+    const diagnostics: QCDiagnostic[] = [];
+
+    for (const declaration of program.declarations) {
+      if (declaration.kind === "ClassDeclaration") {
+        registry.registerClass(declaration as ClassDeclarationNode);
+      }
+    }
+
+    for (const declaration of program.declarations) {
+      switch (declaration.kind) {
+        case "VariableDeclaration":
+          this.checkVariable(
+            declaration as VariableDeclarationNode,
+            registry,
+            diagnostics,
+          );
+          break;
+
+        case "FunctionDeclaration":
+          this.checkFunction(
+            declaration as FunctionDeclarationNode,
+            registry,
+            diagnostics,
+          );
+          break;
+
+        case "ClassDeclaration":
+          this.checkClass(
+            declaration as ClassDeclarationNode,
+            registry,
+            diagnostics,
+          );
+          break;
+      }
+    }
+
+    return diagnostics;
+  }
+
+  private checkClass(
+    declaration: ClassDeclarationNode,
+    registry: TypeRegistry,
+    diagnostics: QCDiagnostic[],
+  ): void {
+    if (declaration.baseClass && !registry.has(declaration.baseClass)) {
+      diagnostics.push({
+        start: declaration.start,
+        end: declaration.end,
+        message: "Unknown base type '" + declaration.baseClass + "'.",
+        severity: "error",
+        code: "unknown-base-type",
+      });
+    }
+
+    for (const member of declaration.members) {
+      if (member.kind === "VariableDeclaration") {
+        this.checkVariable(
+          member as VariableDeclarationNode,
+          registry,
+          diagnostics,
+        );
+      } else {
+        this.checkFunction(
+          member as FunctionDeclarationNode,
+          registry,
+          diagnostics,
+        );
+      }
+    }
+  }
+
+  private checkFunction(
+    declaration: FunctionDeclarationNode,
+    registry: TypeRegistry,
+    diagnostics: QCDiagnostic[],
+  ): void {
+    this.checkTypeRef(
+      declaration.returnType,
+      declaration.start,
+      declaration.end,
+      registry,
+      diagnostics,
+    );
+
+    for (const parameter of declaration.parameters) {
+      this.checkTypeRef(
+        parameter.type,
+        parameter.start,
+        parameter.end,
+        registry,
+        diagnostics,
+      );
+    }
+  }
+
+  private checkVariable(
+    declaration: VariableDeclarationNode,
+    registry: TypeRegistry,
+    diagnostics: QCDiagnostic[],
+  ): void {
+    this.checkTypeRef(
+      declaration.type,
+      declaration.start,
+      declaration.end,
+      registry,
+      diagnostics,
+    );
+
+    const requiresInitializer =
+      declaration.modifiers.mutability === MutabilityType.Const ||
+      declaration.modifiers.mutability === MutabilityType.Constexpr;
+
+    if (requiresInitializer && !declaration.initializer) {
+      diagnostics.push({
+        start: declaration.start,
+        end: declaration.end,
+        message:
+          declaration.modifiers.mutability +
+          " variable '" +
+          declaration.name +
+          "' must be initialized.",
+        severity: "error",
+        code: "const-init",
+      });
+    }
+  }
+
+  private checkTypeRef(
+    type: TypeRef,
+    start: number,
+    end: number,
+    registry: TypeRegistry,
+    diagnostics: QCDiagnostic[],
+  ): void {
+    if (type.name !== "auto" && !registry.has(type.name)) {
+      diagnostics.push({
+        start,
+        end,
+        message: "Unknown type '" + type.name + "'.",
+        severity: "error",
+        code: "unknown-type",
+      });
+    }
+
+    for (const genericArgument of type.genericArgs ?? []) {
+      this.checkTypeRef(
+        genericArgument,
+        start,
+        end,
+        registry,
+        diagnostics,
+      );
+    }
+  }
+}

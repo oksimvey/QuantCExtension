@@ -1,1 +1,93 @@
-import{TYPES}from"../lexer/Keywords";import{ClassDeclarationNode,FunctionDeclarationNode,VariableDeclarationNode}from"../ast/Nodes";import{TypeMember,TypeSymbol}from"./TypeSymbol";export class TypeRegistry{private t=new Map<string,TypeSymbol>();constructor(){for(const n of TYPES)this.t.set(n,{name:n,builtin:true,members:new Map()})}registerClass(c:ClassDeclarationNode){const x:TypeSymbol={name:c.name,builtin:false,baseType:c.baseClass,members:new Map()};for(const m of c.members)if(m.kind==="FunctionDeclaration"){const f=m as FunctionDeclarationNode;x.members.set(f.name,{name:f.name,typeName:f.returnType.name,kind:"method",parameters:f.parameters.map(p=>({name:p.name,typeName:p.type.name}))})}else{const v=m as VariableDeclarationNode;x.members.set(v.name,{name:v.name,typeName:v.type.name,kind:"field"})}this.t.set(c.name,x)}get(n:string){return this.t.get(n)}has(n:string){return this.t.has(n)}all(){return[...this.t.values()]}membersOf(n:string){const out:TypeMember[]=[],seen=new Set<string>();let x=this.get(n);while(x){for(const m of x.members.values())if(!seen.has(m.name)){seen.add(m.name);out.push(m)}x=x.baseType?this.get(x.baseType):undefined}return out}}
+import {
+  ClassDeclarationNode,
+  FunctionDeclarationNode,
+  VariableDeclarationNode,
+} from "../ast/Nodes";
+import { TYPES } from "../lexer/Keywords";
+import { TypeMember, TypeSymbol } from "./TypeSymbol";
+
+export class TypeRegistry {
+  private readonly types = new Map<string, TypeSymbol>();
+
+  constructor() {
+    for (const name of TYPES) {
+      this.types.set(name, {
+        name,
+        builtin: true,
+        members: new Map(),
+      });
+    }
+  }
+
+  registerClass(declaration: ClassDeclarationNode): void {
+    const type: TypeSymbol = {
+      name: declaration.name,
+      builtin: false,
+      baseType: declaration.baseClass,
+      members: new Map(),
+    };
+
+    for (const member of declaration.members) {
+      if (member.kind === "FunctionDeclaration") {
+        const method = member as FunctionDeclarationNode;
+
+        type.members.set(method.name, {
+          name: method.name,
+          typeName: method.returnType.name,
+          kind: "method",
+          parameters: method.parameters.map((parameter) => ({
+            name: parameter.name,
+            typeName: parameter.type.name,
+          })),
+        });
+
+        continue;
+      }
+
+      const field = member as VariableDeclarationNode;
+      type.members.set(field.name, {
+        name: field.name,
+        typeName: field.type.name,
+        kind: "field",
+      });
+    }
+
+    this.types.set(declaration.name, type);
+  }
+
+  get(name: string): TypeSymbol | undefined {
+    return this.types.get(name);
+  }
+
+  has(name: string): boolean {
+    return this.types.has(name);
+  }
+
+  all(): TypeSymbol[] {
+    return [...this.types.values()];
+  }
+
+  membersOf(name: string): TypeMember[] {
+    const members: TypeMember[] = [];
+    const seen = new Set<string>();
+    const visitedTypes = new Set<string>();
+    let type = this.get(name);
+
+    while (type && !visitedTypes.has(type.name)) {
+      visitedTypes.add(type.name);
+
+      for (const member of type.members.values()) {
+        if (seen.has(member.name)) {
+          continue;
+        }
+
+        seen.add(member.name);
+        members.push(member);
+      }
+
+      type = type.baseType ? this.get(type.baseType) : undefined;
+    }
+
+    return members;
+  }
+}
