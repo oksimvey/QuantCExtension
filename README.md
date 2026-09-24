@@ -375,6 +375,7 @@ function void main() {
 ### Java
 A JNI/JNA binding layer is generated automatically for `public` classes. Java can instantiate QuantC objects and call their methods via the generated `.jar` wrapper.
 
+
 ```java
 import quantc.Circle;
 Circle c = new Circle(5.0f);
