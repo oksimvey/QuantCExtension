@@ -186,6 +186,8 @@ export class CompletionProvider implements vscode.CompletionItemProvider {
         return vscode.CompletionItemKind.Variable;
       case SymbolKind.Enum:
         return vscode.CompletionItemKind.Enum;
+      default:
+        return vscode.CompletionItemKind.Variable;
     }
   }
 }
