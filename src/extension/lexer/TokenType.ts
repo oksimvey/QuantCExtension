@@ -1,0 +1,1 @@
+export enum TokenType{EOF,Identifier,Keyword,Type,Number,String,Char,Operator,CustomOperator,LeftParen,RightParen,LeftBrace,RightBrace,LeftBracket,RightBracket,Comma,Dot,Colon,Semicolon,Less,Greater,NewLine}

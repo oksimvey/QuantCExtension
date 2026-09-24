@@ -1,0 +1,1 @@
+import{QCSymbol}from"./Symbol";export class Scope{private s=new Map<string,QCSymbol>();constructor(readonly parent?:Scope){}define(x:QCSymbol){if(this.s.has(x.name))return false;this.s.set(x.name,x);return true}resolve(n:string):QCSymbol|undefined{return this.s.get(n)??this.parent?.resolve(n)}values(){return[...this.s.values()]}}
