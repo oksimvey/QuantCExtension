@@ -1,74 +1,59 @@
 {
   "name": "qc-language",
   "displayName": "QC Language Support",
-  "description": "Syntax highlighting and language tooling for .qc files",
-  "version": "0.1.0",
+  "description": "Syntax highlighting, semantic diagnostics and language tooling for QuantC",
+  "version": "0.2.0",
   "icon": "icons/quantc-icon.svg",
-  "engines": {
-    "vscode": "^1.85.0"
-  },
-  "categories": [
-    "Programming Languages"
-  ],
-  "activationEvents": [
-    "onLanguage:qc",
-    "onCommand:qc.compileAndRun"
-  ],
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Programming Languages"],
+  "activationEvents": ["onLanguage:qc", "onCommand:qc.compileAndRun"],
   "main": "./dist/Main.js",
   "contributes": {
-    "languages": [
-      {
-        "id": "qc",
-        "aliases": [
-          "QC",
-          "qc"
-        ],
-        "extensions": [
-          ".qc"
-        ],
-        "configuration": "./language-configuration.json",
-        "icon": {
-          "light": "./icons/quantc-icon.svg",
-          "dark": "./icons/quantc-icon.svg"
-        }
+    "languages": [{
+      "id": "qc",
+      "aliases": ["QuantC", "QC", "qc"],
+      "extensions": [".qc"],
+      "configuration": "./language-configuration.json",
+      "icon": { "light": "./icons/quantc-icon.svg", "dark": "./icons/quantc-icon.svg" }
+    }],
+    "grammars": [{
+      "language": "qc",
+      "scopeName": "source.qc",
+      "path": "./syntaxes/qc-tmLanguage.json"
+    }],
+    "commands": [{
+      "command": "qc.compileAndRun",
+      "title": "QC: Compile and Run",
+      "category": "QC"
+    }],
+    "semanticTokenTypes": [{
+      "id": "quantcType",
+      "description": "A user-defined QuantC type"
+    }],
+    "semanticTokenScopes": [{
+      "language": "qc",
+      "scopes": {
+        "quantcType": ["support.type.primitive.qc"]
       }
-    ],
-    "grammars": [
-      {
-        "language": "qc",
-        "scopeName": "source.qc",
-        "path": "./syntaxes/qc-tmLanguage.json"
+    }],
+    "configurationDefaults": {
+      "[qc]": {
+        "editor.semanticHighlighting.enabled": true
       }
-    ],
-    "commands": [
-      {
-        "command": "qc.compileAndRun",
-        "title": "QC: Compile and Run",
-        "category": "QC"
-      }
-    ]
+    }
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p .",
-    "typecheck": "tsc -p . --noEmit",
-    "test": "npm run typecheck"
+    "compile": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run check"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/oksimvey/QuantCExtension.git"
   },
-  "keywords": [
-    "quantc",
-    "qc",
-    "language"
-  ],
-  "author": "",
   "license": "ISC",
   "type": "commonjs",
-  "bugs": {
-    "url": "https://github.com/oksimvey/QuantCExtension/issues"
-  },
+  "bugs": { "url": "https://github.com/oksimvey/QuantCExtension/issues" },
   "homepage": "https://github.com/oksimvey/QuantCExtension#readme",
   "devDependencies": {
     "@types/node": "^25.9.1",

@@ -1,12 +1,11 @@
 import { ClassDeclarationNode } from "../ast/Nodes";
-import { Parser } from "../parser/Parser";
-import { ProjectIndex } from "../project/ProjectIndex";
-import { SourceFile } from "../project/SourceFile";
 import { Binder } from "../semantic/Binder";
-import { QCDiagnostic } from "../types/Diagnostic";
+import { Parser } from "../parser/Parser";
 import { TypeChecker } from "../types/TypeChecker";
 import { TypeRegistry } from "../types/TypeRegistry";
-import { escapeRegExp } from "./TextUtils";
+import { ProjectIndex } from "../project/ProjectIndex";
+import { SourceFile } from "../project/SourceFile";
+import { QCDiagnostic } from "../types/Diagnostic";
 
 export class LanguageService {
   constructor(readonly project = new ProjectIndex()) {}
@@ -14,84 +13,65 @@ export class LanguageService {
   analyse(uri: string, text: string, version = 0): SourceFile {
     const parser = new Parser(text);
     const ast = parser.parseProgram();
-    const bindResult = new Binder().bind(ast);
-    const typeRegistry = this.createTypeRegistry();
+    const bound = new Binder().bind(ast);
+    const registry = new TypeRegistry();
+
+    for (const indexed of this.project.allClasses()) {
+      const file = this.project.getFile(indexed.uri);
+      if (!file) continue;
+      for (const declaration of file.ast.declarations) {
+        if (declaration.kind === "ClassDeclaration") registry.registerClass(declaration);
+      }
+    }
 
     const diagnostics: QCDiagnostic[] = [
-      ...parser.diagnostics.map((diagnostic) => ({
-        ...diagnostic,
-        severity: "error" as const,
-      })),
-      ...bindResult.diagnostics.map((diagnostic) => ({
-        ...diagnostic,
-        severity: "error" as const,
-      })),
-      ...new TypeChecker().check(ast, typeRegistry),
+      ...parser.diagnostics.map(d => ({ ...d, severity: "error" as const, code: "syntax" })),
+      ...bound.diagnostics.map(d => ({ ...d, severity: "error" as const, code: "binding" })),
+      ...new TypeChecker().check(ast, registry, text)
     ];
 
-    const file: SourceFile = {
-      uri,
-      text,
-      version,
-      ast,
-      symbols: bindResult.symbols,
-      diagnostics,
-    };
-
+    const file: SourceFile = { uri, text, version, ast, symbols: bound.symbols, diagnostics };
     this.project.update(file);
     return file;
   }
 
-  variableTypeAt(
-    uri: string,
-    variableName: string,
-    offset: number,
-  ): string | undefined {
+  classAt(uri: string, offset: number): ClassDeclarationNode | undefined {
     const file = this.project.getFile(uri);
+    if (!file) return undefined;
 
-    if (!file) {
-      return undefined;
-    }
-
-    const prefix = file.text.slice(0, offset);
-    const escapedName = escapeRegExp(variableName);
-    const declarationPattern = new RegExp(
-      "(?:^|[;{}\\n])\\s*" +
-        "(?:public\\s+|private\\s+|const\\s+|mutable\\s+|" +
-        "local\\s+|global\\s+|constexpr\\s+)*" +
-        "([A-Za-z_]\\w*(?:\\s*<[^;=\\n]+>)?)\\s+" +
-        escapedName +
-        "\\b",
-      "g",
-    );
-
-    let match: RegExpExecArray | null;
-    let lastType: string | undefined;
-
-    while ((match = declarationPattern.exec(prefix))) {
-      lastType = match[1].replace(/\s*<.*$/, "");
-    }
-
-    return lastType;
+    return file.ast.declarations.find(
+      declaration => declaration.kind === "ClassDeclaration" && offset >= declaration.start && offset <= declaration.end
+    ) as ClassDeclarationNode | undefined;
   }
 
-  private createTypeRegistry(): TypeRegistry {
-    const registry = new TypeRegistry();
+  variableTypeAt(uri: string, name: string, offset: number): string | undefined {
+    const file = this.project.getFile(uri);
+    if (!file) return undefined;
+    const prefix = file.text.slice(0, offset);
+    const escaped = name.replace(/[.*+?^$()|[\]{}\\]/g, "\\$&");
+    const re = new RegExp(
+      "(?:^|[;{}\\n])\\s*(?:public\\s+|private\\s+|const\\s+|mutable\\s+|local\\s+|global\\s+|constexpr\\s+)*" +
+      "([A-Za-z_]\\w*(?:\\s*<[^;=]+>)?)\\s+" + escaped + "\\b", "g"
+    );
+    let match: RegExpExecArray | null;
+    let last: string | undefined;
+    while ((match = re.exec(prefix))) last = match[1].replace(/\s*<.*$/, "");
+    return last;
+  }
 
-    for (const indexedClass of this.project.allClasses()) {
-      const file = this.project.getFile(indexedClass.uri);
+  accessTargetAt(uri: string, name: string, offset: number): { typeName: string; access: "static" | "instance" } | undefined {
+    const currentClass = this.classAt(uri, offset);
 
-      if (!file) {
-        continue;
-      }
-
-      for (const declaration of file.ast.declarations) {
-        if (declaration.kind === "ClassDeclaration") {
-          registry.registerClass(declaration as ClassDeclarationNode);
-        }
-      }
+    if (name === "this" && currentClass) {
+      return { typeName: currentClass.name, access: "instance" };
     }
 
-    return registry;
+    if (name === "super" && currentClass?.baseClass) {
+      return { typeName: currentClass.baseClass, access: "instance" };
+    }
+
+    if (this.project.getClass(name)) return { typeName: name, access: "static" };
+    const typeName = this.variableTypeAt(uri, name, offset);
+    return typeName ? { typeName, access: "instance" } : undefined;
   }
 }

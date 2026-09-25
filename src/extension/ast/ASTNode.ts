@@ -1,5 +1,1 @@
-export interface ASTNode {
-  kind: string;
-  start: number;
-  end: number;
-}
+export interface ASTNode{kind:string;start:number;end:number}

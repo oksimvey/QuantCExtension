@@ -1,13 +1,14 @@
-export interface TypeMemberParameter {
-  name: string;
-  typeName: string;
-}
+import { MutabilityType, VisibilityType } from "../ast/Modifiers";
 
 export interface TypeMember {
   name: string;
   typeName: string;
   kind: "field" | "method";
-  parameters?: TypeMemberParameter[];
+  isGlobal: boolean;
+  visibility: VisibilityType;
+  mutability: MutabilityType;
+  declaringType: string;
+  parameters?: { name: string; typeName: string }[];
 }
 
 export interface TypeSymbol {

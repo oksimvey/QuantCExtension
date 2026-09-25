@@ -1,193 +1,62 @@
 import * as vscode from "vscode";
+import { VisibilityType } from "../ast/Modifiers";
 import { BUILTINS, KEYWORDS, TYPES } from "../lexer/Keywords";
-import { IndexedMember } from "../project/ProjectIndex";
-import { SymbolKind } from "../semantic/SymbolKind";
 import { LanguageService } from "./LanguageService";
 
 export class CompletionProvider implements vscode.CompletionItemProvider {
-  constructor(private readonly service: LanguageService) {}
+  constructor(private service: LanguageService) {}
 
-  provideCompletionItems(
-    document: vscode.TextDocument,
-    position: vscode.Position,
-  ): vscode.CompletionItem[] {
+  provideCompletionItems(document: vscode.TextDocument, position: vscode.Position): vscode.CompletionItem[] {
     const offset = document.offsetAt(position);
-    const beforeCursor = document.getText(
-      new vscode.Range(new vscode.Position(0, 0), position),
-    );
-    const memberAccess = beforeCursor.match(/([A-Za-z_]\w*)\.\w*$/);
+    const before = document.getText(new vscode.Range(new vscode.Position(0, 0), position));
+    const memberMatch = before.match(/([A-Za-z_]\w*)\.\w*$/);
 
-    if (memberAccess) {
-      return this.memberCompletions(
-        document.uri.toString(),
-        memberAccess[1],
-        offset,
-      );
+    if (memberMatch) {
+      const target = this.service.accessTargetAt(document.uri.toString(), memberMatch[1], offset);
+      if (!target) return [];
+
+      const currentClass = this.service.classAt(document.uri.toString(), offset)?.name;
+      return this.service.project.classMembers(target.typeName, target.access)
+        .filter(member => member.visibility === VisibilityType.Public || member.declaringType === currentClass)
+        .map(member => {
+          const item = new vscode.CompletionItem(
+            member.name,
+            member.kind === "method" ? vscode.CompletionItemKind.Method : vscode.CompletionItemKind.Field
+          );
+
+          const storage = member.isGlobal ? "global" : "instance";
+          const visibility = member.visibility === VisibilityType.Public ? "public" : member.visibility;
+          item.detail = member.kind === "method"
+            ? `${visibility} • ${storage} • (${member.parameters.map(p => `${p.typeName} ${p.name}`).join(", ")}) : ${member.typeName}`
+            : `${visibility} • ${storage} • ${member.typeName}`;
+
+          item.insertText = member.kind === "method"
+            ? new vscode.SnippetString(
+              member.name + "(" + member.parameters.map((p, i) => "${" + (i + 1) + ":" + p.name + "}").join(", ") + ")"
+            )
+            : member.name;
+
+          return item;
+        });
     }
 
-    return this.globalCompletions(document.uri.toString());
-  }
-
-  private memberCompletions(
-    uri: string,
-    variableName: string,
-    offset: number,
-  ): vscode.CompletionItem[] {
-    const typeName = this.service.variableTypeAt(
-      uri,
-      variableName,
-      offset,
-    );
-
-    if (!typeName) {
-      return [];
-    }
-
-    return this.service.project
-      .classMembers(typeName)
-      .map((member) => this.createMemberCompletion(member));
-  }
-
-  private globalCompletions(uri: string): vscode.CompletionItem[] {
-    const items = new Map<string, vscode.CompletionItem>();
-
-    const add = (item: vscode.CompletionItem): void => {
-      const key =
-        typeof item.label === "string"
-          ? item.label
-          : item.label.label;
-
-      if (!items.has(key)) {
-        items.set(key, item);
-      }
-    };
-
-    for (const keyword of KEYWORDS) {
-      add(
-        new vscode.CompletionItem(
-          keyword,
-          vscode.CompletionItemKind.Keyword,
-        ),
-      );
-    }
-
-    for (const type of TYPES) {
-      add(
-        new vscode.CompletionItem(
-          type,
-          vscode.CompletionItemKind.TypeParameter,
-        ),
-      );
-    }
+    const out: vscode.CompletionItem[] = [];
+    for (const keyword of KEYWORDS) out.push(new vscode.CompletionItem(keyword, vscode.CompletionItemKind.Keyword));
+    for (const type of TYPES) out.push(new vscode.CompletionItem(type, vscode.CompletionItemKind.TypeParameter));
 
     for (const [name, builtin] of BUILTINS) {
-      const item = new vscode.CompletionItem(
-        name,
-        vscode.CompletionItemKind.Function,
-      );
+      const item = new vscode.CompletionItem(name, vscode.CompletionItemKind.Function);
       item.detail = builtin.signature;
-      item.documentation = new vscode.MarkdownString(
-        builtin.documentation,
-      );
-      add(item);
+      item.documentation = new vscode.MarkdownString(builtin.documentation);
+      out.push(item);
     }
 
-    for (const indexedClass of this.service.project.allClasses()) {
-      const item = new vscode.CompletionItem(
-        indexedClass.name,
-        vscode.CompletionItemKind.Class,
-      );
-      item.detail = indexedClass.baseClass
-        ? "class " +
-          indexedClass.name +
-          " extends " +
-          indexedClass.baseClass
-        : "class " + indexedClass.name;
-      add(item);
+    for (const c of this.service.project.allClasses()) {
+      const item = new vscode.CompletionItem(c.name, vscode.CompletionItemKind.Class);
+      item.detail = c.baseClass ? `class ${c.name} extends ${c.baseClass}` : `class ${c.name}`;
+      out.push(item);
     }
 
-    const file = this.service.project.getFile(uri);
-    for (const symbol of file?.symbols ?? []) {
-      const item = new vscode.CompletionItem(
-        symbol.name,
-        this.completionKindForSymbol(symbol.kind),
-      );
-
-      if (symbol.typeName) {
-        item.detail = symbol.typeName;
-      }
-
-      add(item);
-    }
-
-    return [...items.values()];
-  }
-
-  private createMemberCompletion(
-    member: IndexedMember,
-  ): vscode.CompletionItem {
-    const item = new vscode.CompletionItem(
-      member.name,
-      member.kind === "method"
-        ? vscode.CompletionItemKind.Method
-        : vscode.CompletionItemKind.Field,
-    );
-
-    if (member.kind === "method") {
-      item.detail =
-        "(" +
-        member.parameters
-          .map(
-            (parameter) =>
-              parameter.typeName + " " + parameter.name,
-          )
-          .join(", ") +
-        ") : " +
-        member.typeName;
-
-      item.insertText = new vscode.SnippetString(
-        member.name +
-          "(" +
-          member.parameters
-            .map(
-              (parameter, index) =>
-                "${" +
-                (index + 1) +
-                ":" +
-                parameter.name +
-                "}",
-            )
-            .join(", ") +
-          ")",
-      );
-
-      return item;
-    }
-
-    item.detail = member.typeName;
-    item.insertText = member.name;
-    return item;
-  }
-
-  private completionKindForSymbol(
-    kind: SymbolKind,
-  ): vscode.CompletionItemKind {
-    switch (kind) {
-      case SymbolKind.Class:
-        return vscode.CompletionItemKind.Class;
-      case SymbolKind.Function:
-        return vscode.CompletionItemKind.Function;
-      case SymbolKind.Method:
-        return vscode.CompletionItemKind.Method;
-      case SymbolKind.Field:
-        return vscode.CompletionItemKind.Field;
-      case SymbolKind.Parameter:
-      case SymbolKind.Variable:
-        return vscode.CompletionItemKind.Variable;
-      case SymbolKind.Enum:
-        return vscode.CompletionItemKind.Enum;
-      default:
-        return vscode.CompletionItemKind.Variable;
-    }
+    return out;
   }
 }

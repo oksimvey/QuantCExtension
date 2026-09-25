@@ -1,5 +1,1 @@
-export interface LexerDiagnostic {
-  start: number;
-  end: number;
-  message: string;
-}
+import{SourceRange}from"./Token";export interface LexerDiagnostic extends SourceRange{message:string}
