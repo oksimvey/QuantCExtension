@@ -1,10 +1,12 @@
 import * as vscode from "vscode";
+import { VisibilityType } from "../ast/Modifiers";
 import { LanguageService } from "./LanguageService";
 
 const CUSTOM_TYPE_TOKEN = "quantcType";
+const CLASS_MEMBER_TOKEN = "quantcMember";
 
 export class SemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
-  readonly legend = new vscode.SemanticTokensLegend([CUSTOM_TYPE_TOKEN]);
+  readonly legend = new vscode.SemanticTokensLegend([CUSTOM_TYPE_TOKEN, CLASS_MEMBER_TOKEN]);
 
   constructor(private service: LanguageService) {}
 
@@ -17,8 +19,6 @@ export class SemanticTokensProvider implements vscode.DocumentSemanticTokensProv
 
     const customTypes = new Set(this.service.visibleClassesAt(uri).map(type => type.name));
     const builder = new vscode.SemanticTokensBuilder(this.legend);
-    if (customTypes.size === 0) return builder.build();
-
     const text = document.getText();
     let index = 0;
 
@@ -47,11 +47,12 @@ export class SemanticTokensProvider implements vscode.DocumentSemanticTokensProv
         const word = text.slice(start, index);
 
         if (customTypes.has(word)) {
-          builder.push(
-            new vscode.Range(document.positionAt(start), document.positionAt(index)),
-            CUSTOM_TYPE_TOKEN,
-            []
-          );
+          this.push(builder, document, start, index, CUSTOM_TYPE_TOKEN);
+          continue;
+        }
+
+        if (this.isAccessibleMember(uri, text, word, start)) {
+          this.push(builder, document, start, index, CLASS_MEMBER_TOKEN);
         }
         continue;
       }
@@ -60,6 +61,48 @@ export class SemanticTokensProvider implements vscode.DocumentSemanticTokensProv
     }
 
     return builder.build();
+  }
+
+  private isAccessibleMember(uri: string, text: string, memberName: string, memberStart: number): boolean {
+    const dot = this.previousNonWhitespace(text, memberStart - 1);
+    if (dot < 0 || text[dot] !== ".") return false;
+
+    const objectEnd = this.previousNonWhitespace(text, dot - 1) + 1;
+    if (objectEnd <= 0) return false;
+
+    let objectStart = objectEnd;
+    while (objectStart > 0 && this.isIdentifierPart(text[objectStart - 1])) objectStart--;
+    if (objectStart === objectEnd || !this.isIdentifierStart(text[objectStart])) return false;
+
+    const objectName = text.slice(objectStart, objectEnd);
+    const target = this.service.accessTargetAt(uri, objectName, memberStart);
+    if (!target) return false;
+
+    const currentClass = this.service.classAt(uri, memberStart)?.name;
+    const member = this.service.membersForCompletion(uri, target.typeName, target.access)
+      .find(candidate => candidate.name === memberName);
+    if (!member) return false;
+
+    return member.visibility === VisibilityType.Public || member.declaringType === currentClass;
+  }
+
+  private push(
+    builder: vscode.SemanticTokensBuilder,
+    document: vscode.TextDocument,
+    start: number,
+    end: number,
+    tokenType: string
+  ): void {
+    builder.push(
+      new vscode.Range(document.positionAt(start), document.positionAt(end)),
+      tokenType,
+      []
+    );
+  }
+
+  private previousNonWhitespace(text: string, index: number): number {
+    while (index >= 0 && /\s/.test(text[index])) index--;
+    return index;
   }
 
   private skipLineComment(text: string, index: number): number {
