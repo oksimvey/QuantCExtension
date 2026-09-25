@@ -46,6 +46,19 @@ export class ProjectIndex {
   allFiles(): SourceFile[] { return [...this.files.values()]; }
   getClass(name: string): IndexedClass | undefined { return this.classes.get(name); }
   allClasses(): IndexedClass[] { return [...this.classes.values()]; }
+  classesInFile(uri: string): IndexedClass[] { return this.allClasses().filter(c => c.uri === uri); }
+
+  resolveImport(path: string[], wildcard: boolean): IndexedClass[] {
+    if (path.length === 0) return [];
+
+    if (wildcard) {
+      return this.allClasses().filter(c => this.matchesPackage(c.uri, path));
+    }
+
+    const className = path[path.length - 1];
+    const packagePath = path.slice(0, -1);
+    return this.allClasses().filter(c => c.name === className && this.matchesPackage(c.uri, packagePath));
+  }
 
   classMembers(name: string, access: "static" | "instance" | "all" = "all"): IndexedMember[] {
     const out: IndexedMember[] = [];
@@ -79,6 +92,21 @@ export class ProjectIndex {
     }
 
     return undefined;
+  }
+
+  private matchesPackage(uri: string, packagePath: string[]): boolean {
+    if (packagePath.length === 0) return true;
+    const path = this.normalizedPath(uri);
+    const slash = path.lastIndexOf("/");
+    const directory = slash >= 0 ? path.slice(0, slash) : "";
+    const suffix = "/" + packagePath.join("/");
+    return directory.endsWith(suffix) || directory === packagePath.join("/");
+  }
+
+  private normalizedPath(uri: string): string {
+    let value = uri.replace(/\\/g, "/");
+    try { value = decodeURIComponent(value); } catch { /* keep original URI */ }
+    return value.replace(/\/+$/, "");
   }
 
   private index(uri: string, program: ProgramNode): void {

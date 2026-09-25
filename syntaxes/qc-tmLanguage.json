@@ -1,24 +1,56 @@
 {
   "name": "QuantC",
   "scopeName": "source.qc",
-  "fileTypes": ["qc"],
+  "fileTypes": [
+    "qc"
+  ],
   "patterns": [
-    { "include": "#comments" },
-    { "include": "#strings" },
-    { "include": "#numbers" },
-    { "include": "#declarations" },
-    { "include": "#customTypes" },
-    { "include": "#keywords" },
-    { "include": "#types" },
-    { "include": "#functions" },
-    { "include": "#operators" },
-    { "include": "#punctuation" }
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#imports"
+    },
+    {
+      "include": "#declarations"
+    },
+    {
+      "include": "#customTypes"
+    },
+    {
+      "include": "#keywords"
+    },
+    {
+      "include": "#types"
+    },
+    {
+      "include": "#functions"
+    },
+    {
+      "include": "#operators"
+    },
+    {
+      "include": "#punctuation"
+    }
   ],
   "repository": {
     "comments": {
       "patterns": [
-        { "name": "comment.line.double-slash.qc", "match": "//.*$" },
-        { "name": "comment.block.qc", "begin": "/\\*", "end": "\\*/" }
+        {
+          "name": "comment.line.double-slash.qc",
+          "match": "//.*$"
+        },
+        {
+          "name": "comment.block.qc",
+          "begin": "/\\*",
+          "end": "\\*/"
+        }
       ]
     },
     "strings": {
@@ -27,29 +59,51 @@
           "name": "string.quoted.double.qc",
           "begin": "\"",
           "end": "\"",
-          "patterns": [{ "name": "constant.character.escape.qc", "match": "\\\\." }]
+          "patterns": [
+            {
+              "name": "constant.character.escape.qc",
+              "match": "\\\\."
+            }
+          ]
         },
         {
           "name": "string.quoted.single.qc",
           "begin": "'",
           "end": "'",
-          "patterns": [{ "name": "constant.character.escape.qc", "match": "\\\\." }]
+          "patterns": [
+            {
+              "name": "constant.character.escape.qc",
+              "match": "\\\\."
+            }
+          ]
         }
       ]
     },
     "numbers": {
       "patterns": [
-        { "name": "constant.numeric.hex.qc", "match": "\\b0[xX][0-9A-Fa-f]+\\b" },
-        { "name": "constant.numeric.binary.qc", "match": "\\b0[bB][01]+\\b" },
-        { "name": "constant.numeric.float.qc", "match": "\\b(?:\\d+\\.\\d*|\\.\\d+)(?:[eE][+-]?\\d+)?\\b" },
-        { "name": "constant.numeric.integer.qc", "match": "\\b\\d+\\b" }
+        {
+          "name": "constant.numeric.hex.qc",
+          "match": "\\b0[xX][0-9A-Fa-f]+\\b"
+        },
+        {
+          "name": "constant.numeric.binary.qc",
+          "match": "\\b0[bB][01]+\\b"
+        },
+        {
+          "name": "constant.numeric.float.qc",
+          "match": "\\b(?:\\d+\\.\\d*|\\.\\d+)(?:[eE][+-]?\\d+)?\\b"
+        },
+        {
+          "name": "constant.numeric.integer.qc",
+          "match": "\\b\\d+\\b"
+        }
       ]
     },
     "keywords": {
       "patterns": [
         {
           "name": "keyword.control.qc",
-          "match": "\\b(?:return|if|else|while|for|continue|break|switch|case|default|try|wait|await|throw|catch|instanceof|and|or|not|delete|new|this|super)\\b"
+          "match": "\\b(?:import|return|if|else|while|for|continue|break|switch|case|default|try|wait|await|throw|catch|instanceof|and|or|not|delete|new|this|super)\\b"
         },
         {
           "name": "storage.modifier.qc",
@@ -82,8 +136,12 @@
         {
           "match": "\\b(new)\\s+([A-Za-z_][A-Za-z0-9_]*)",
           "captures": {
-            "1": { "name": "keyword.control.qc" },
-            "2": { "name": "support.type.primitive.qc" }
+            "1": {
+              "name": "keyword.control.qc"
+            },
+            "2": {
+              "name": "support.type.primitive.qc"
+            }
           }
         },
         {
@@ -97,47 +155,104 @@
         {
           "match": "\\b(function)\\s+([A-Za-z_][A-Za-z0-9_]*(?:\\s*<[^>{}()]+>)?)\\s+([A-Za-z_][A-Za-z0-9_]*)",
           "captures": {
-            "1": { "name": "storage.type.function.qc" },
-            "2": { "name": "support.type.return.qc" },
-            "3": { "name": "entity.name.function.qc" }
+            "1": {
+              "name": "storage.type.function.qc"
+            },
+            "2": {
+              "name": "support.type.return.qc"
+            },
+            "3": {
+              "name": "entity.name.function.qc"
+            }
           }
         },
         {
           "match": "\\b(class)\\s+([A-Za-z_][A-Za-z0-9_]*)(?:\\s+(extends)\\s+([A-Za-z_][A-Za-z0-9_]*))?",
           "captures": {
-            "1": { "name": "storage.type.class.qc" },
-            "2": { "name": "entity.name.type.class.qc" },
-            "3": { "name": "keyword.control.inheritance.qc" },
-            "4": { "name": "entity.other.inherited-class.qc" }
+            "1": {
+              "name": "storage.type.class.qc"
+            },
+            "2": {
+              "name": "entity.name.type.class.qc"
+            },
+            "3": {
+              "name": "keyword.control.inheritance.qc"
+            },
+            "4": {
+              "name": "entity.other.inherited-class.qc"
+            }
           }
         },
         {
           "match": "\\b(enum)\\s+([A-Za-z_][A-Za-z0-9_]*)",
           "captures": {
-            "1": { "name": "storage.type.enum.qc" },
-            "2": { "name": "entity.name.type.enum.qc" }
+            "1": {
+              "name": "storage.type.enum.qc"
+            },
+            "2": {
+              "name": "entity.name.type.enum.qc"
+            }
           }
         }
       ]
     },
     "functions": {
       "patterns": [
-        { "name": "entity.name.function.call.qc", "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b(?=\\s*\\()" }
+        {
+          "name": "entity.name.function.call.qc",
+          "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b(?=\\s*\\()"
+        }
       ]
     },
     "operators": {
       "patterns": [
-        { "name": "keyword.operator.assignment.qc", "match": "\\*\\*=|==|!=|<=|>=|\\+=|-=|\\*=|/=|%=|=|\\+\\+|--" },
-        { "name": "keyword.operator.logical.qc", "match": "&&|\\|\\||!" },
-        { "name": "keyword.operator.bitwise.qc", "match": "<<|>>|\\^|&|\\|" },
-        { "name": "keyword.operator.arithmetic.qc", "match": "\\*\\*|[+\\-*/%<>]" }
+        {
+          "name": "keyword.operator.assignment.qc",
+          "match": "\\*\\*=|==|!=|<=|>=|\\+=|-=|\\*=|/=|%=|=|\\+\\+|--"
+        },
+        {
+          "name": "keyword.operator.logical.qc",
+          "match": "&&|\\|\\||!"
+        },
+        {
+          "name": "keyword.operator.bitwise.qc",
+          "match": "<<|>>|\\^|&|\\|"
+        },
+        {
+          "name": "keyword.operator.arithmetic.qc",
+          "match": "\\*\\*|[+\\-*/%<>]"
+        }
       ]
     },
     "punctuation": {
       "patterns": [
-        { "name": "punctuation.separator.qc", "match": "[(),.;:]" },
-        { "name": "punctuation.section.brackets.qc", "match": "[\\[\\]{}]" },
-        { "name": "punctuation.accessor.qc", "match": "\\." }
+        {
+          "name": "punctuation.separator.qc",
+          "match": "[(),.;:]"
+        },
+        {
+          "name": "punctuation.section.brackets.qc",
+          "match": "[\\[\\]{}]"
+        },
+        {
+          "name": "punctuation.accessor.qc",
+          "match": "\\."
+        }
+      ]
+    },
+    "imports": {
+      "patterns": [
+        {
+          "match": "\\b(import)\\s+((?:[A-Za-z_][A-Za-z0-9_]*\\.)*(?:[A-Za-z_][A-Za-z0-9_]*|\\*))",
+          "captures": {
+            "1": {
+              "name": "keyword.control.import.qc"
+            },
+            "2": {
+              "name": "support.type.primitive.qc"
+            }
+          }
+        }
       ]
     }
   }

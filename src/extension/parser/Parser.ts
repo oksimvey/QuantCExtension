@@ -5,9 +5,9 @@ import { TokenType } from "../lexer/TokenType";
 import {
   AssignmentExpressionNode, BinaryExpressionNode, BlockStatementNode, CallExpressionNode,
   ClassDeclarationNode, DeclarationNode, EnumDeclarationNode, ExpressionNode, ExpressionStatementNode,
-  FunctionDeclarationNode, IdentifierNode, IfStatementNode, IndexAccessNode, LiteralNode,
-  MemberAccessNode, NewExpressionNode, ParameterNode, ProgramNode, ReturnStatementNode,
-  StatementNode, TypeRef, UnaryExpressionNode, VariableDeclarationNode, WhileStatementNode
+  FunctionDeclarationNode, IdentifierNode, IfStatementNode, ImportDeclarationNode, IndexAccessNode,
+  LiteralNode, MemberAccessNode, NewExpressionNode, ParameterNode, ProgramNode, ReturnStatementNode,
+  StatementNode, TopLevelNode, TypeRef, UnaryExpressionNode, VariableDeclarationNode, WhileStatementNode
 } from "../ast/Nodes";
 import { defaultModifiers, Modifiers, MutabilityType, StorageType, VisibilityType } from "../ast/Modifiers";
 
@@ -30,22 +30,29 @@ export class Parser {
   }
 
   parseProgram(): ProgramNode {
-    const declarations: DeclarationNode[] = [];
+    const declarations: TopLevelNode[] = [];
     this.stream.skipTrivia();
+
     while (!this.stream.check(TokenType.EOF)) {
       const before = this.stream.peek();
       const declaration = this.declaration();
-      if (declaration) declarations.push(declaration);
-      else {
+      if (declaration) {
+        declarations.push(declaration);
+      } else if (this.looksLikeTopLevelAssignment()) {
+        declarations.push(this.expressionStatement());
+      } else {
         this.err(before, `Expected declaration near '${before.lexeme}'.`);
         this.sync();
       }
       this.stream.skipTrivia();
     }
+
     return { kind: "Program", start: 0, end: this.source.length, declarations };
   }
 
   private declaration(): DeclarationNode | null {
+    if (this.stream.peek().lexeme === "import") return this.importDecl();
+
     const modifiers = this.modifiers();
     const token = this.stream.peek();
     if (token.lexeme === "class") return this.classDecl(modifiers);
@@ -53,6 +60,36 @@ export class Parser {
     if (token.lexeme === "function") return this.functionDecl(modifiers);
     if (this.looksLikeVariableDeclaration()) return this.variableDecl(modifiers);
     return null;
+  }
+
+  private importDecl(): ImportDeclarationNode {
+    const start = this.stream.advance().start;
+    const path: string[] = [];
+    let wildcard = false;
+
+    const first = this.stream.peek();
+    if (first.type !== TokenType.Identifier) {
+      this.err(first, "Expected import path after 'import'.");
+    } else {
+      path.push(this.stream.advance().lexeme);
+    }
+
+    while (this.stream.match(TokenType.Dot)) {
+      if (this.stream.peek().lexeme === "*") {
+        wildcard = true;
+        this.stream.advance();
+        break;
+      }
+
+      const segment = this.stream.peek();
+      if (segment.type !== TokenType.Identifier) {
+        this.err(segment, "Expected identifier or '*' in import path.");
+        break;
+      }
+      path.push(this.stream.advance().lexeme);
+    }
+
+    return { kind: "ImportDeclaration", start, end: this.consumeTerminator(), path, wildcard };
   }
 
   private classDecl(modifiers: Modifiers): ClassDeclarationNode {
@@ -179,10 +216,13 @@ export class Parser {
       return null;
     }
 
+    return this.expressionStatement();
+  }
+
+  private expressionStatement(): ExpressionStatementNode {
     const expression = this.expression();
     const end = this.consumeTerminator();
-    const result: ExpressionStatementNode = { kind: "ExpressionStatement", start: expression.start, end, expression };
-    return result;
+    return { kind: "ExpressionStatement", start: expression.start, end, expression };
   }
 
   private returnStatement(): ReturnStatementNode {
@@ -319,13 +359,25 @@ export class Parser {
 
     if (token.type === TokenType.String || token.type === TokenType.Char) {
       this.stream.advance();
-      const node: LiteralNode = { kind: "Literal", start: token.start, end: token.end, value: token.lexeme, literalType: token.type === TokenType.String ? "string" : "char" };
+      const node: LiteralNode = {
+        kind: "Literal",
+        start: token.start,
+        end: token.end,
+        value: token.lexeme,
+        literalType: token.type === TokenType.String ? "string" : "char"
+      };
       return node;
     }
 
     if (token.lexeme === "true" || token.lexeme === "false" || token.lexeme === "null") {
       this.stream.advance();
-      const node: LiteralNode = { kind: "Literal", start: token.start, end: token.end, value: token.lexeme === "true" ? true : token.lexeme === "false" ? false : null, literalType: token.lexeme === "null" ? "null" : "boolean" };
+      const node: LiteralNode = {
+        kind: "Literal",
+        start: token.start,
+        end: token.end,
+        value: token.lexeme === "true" ? true : token.lexeme === "false" ? false : null,
+        literalType: token.lexeme === "null" ? "null" : "boolean"
+      };
       return node;
     }
 
@@ -353,7 +405,8 @@ export class Parser {
 
     this.err(token, `Expected expression near '${token.lexeme}'.`);
     this.stream.advance();
-    return { kind: "Identifier", start: token.start, end: token.end };
+    const errorNode: IdentifierNode = { kind: "Identifier", start: token.start, end: token.end, name: "<error>" };
+    return errorNode;
   }
 
   private typeRef(): TypeRef {
@@ -398,13 +451,17 @@ export class Parser {
     if (this.stream.peek(n).type === TokenType.Less) {
       let depth = 0;
       do {
-        const t = this.stream.peek(n++);
-        if (t.type === TokenType.Less) depth++;
-        else if (t.type === TokenType.Greater) depth--;
-        if (t.type === TokenType.EOF) return false;
+        const token = this.stream.peek(n++);
+        if (token.type === TokenType.Less) depth++;
+        else if (token.type === TokenType.Greater) depth--;
+        if (token.type === TokenType.EOF) return false;
       } while (depth > 0);
     }
     return this.stream.peek(n).type === TokenType.Identifier;
+  }
+
+  private looksLikeTopLevelAssignment(): boolean {
+    return this.stream.peek().type === TokenType.Identifier && this.stream.peek(1).lexeme === "=";
   }
 
   private consumeTerminator(): number {
@@ -420,9 +477,9 @@ export class Parser {
     return token.type === TokenType.Semicolon || token.type === TokenType.NewLine || token.type === TokenType.EOF;
   }
 
-  private isDefaultModifiers(m: Modifiers): boolean {
-    return m.visibility === VisibilityType.Default && m.mutability === MutabilityType.Mutable &&
-      m.storage === StorageType.Default && !m.abstract && !m.override && !m.task;
+  private isDefaultModifiers(modifiers: Modifiers): boolean {
+    return modifiers.visibility === VisibilityType.Default && modifiers.mutability === MutabilityType.Mutable &&
+      modifiers.storage === StorageType.Default && !modifiers.abstract && !modifiers.override && !modifiers.task;
   }
 
   private ident(message: string): string {

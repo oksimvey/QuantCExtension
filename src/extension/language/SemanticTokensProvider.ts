@@ -15,7 +15,7 @@ export class SemanticTokensProvider implements vscode.DocumentSemanticTokensProv
       this.service.analyse(uri, document.getText(), document.version);
     }
 
-    const customTypes = new Set(this.service.project.allClasses().map(type => type.name));
+    const customTypes = new Set(this.service.visibleClassesAt(uri).map(type => type.name));
     const builder = new vscode.SemanticTokensBuilder(this.legend);
     if (customTypes.size === 0) return builder.build();
 

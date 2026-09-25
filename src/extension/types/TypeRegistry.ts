@@ -1,16 +1,35 @@
 import { TYPES } from "../lexer/Keywords";
 import { ClassDeclarationNode, FunctionDeclarationNode, VariableDeclarationNode } from "../ast/Nodes";
-import { StorageType } from "../ast/Modifiers";
+import { MutabilityType, StorageType, VisibilityType } from "../ast/Modifiers";
 import { TypeMember, TypeSymbol } from "./TypeSymbol";
 
 export class TypeRegistry {
   private types = new Map<string, TypeSymbol>();
+  private visibleTypes = new Set<string>();
 
   constructor() {
-    for (const name of TYPES) this.types.set(name, { name, builtin: true, members: new Map() });
+    for (const name of TYPES) {
+      this.types.set(name, { name, builtin: true, members: new Map() });
+      this.visibleTypes.add(name);
+    }
+
+    this.types.get("string")?.members.set("replace", {
+      name: "replace",
+      typeName: "string",
+      kind: "method",
+      isGlobal: false,
+      visibility: VisibilityType.Public,
+      mutability: MutabilityType.Mutable,
+      declaringType: "string",
+      parameters: [
+        { name: "target", typeName: "string" },
+        { name: "replacement", typeName: "string" }
+      ]
+    });
   }
 
-  registerClass(c: ClassDeclarationNode): void {
+  registerClass(c: ClassDeclarationNode, visible = true): void {
+    const existingVisible = this.visibleTypes.has(c.name);
     const type: TypeSymbol = { name: c.name, builtin: false, baseType: c.baseClass, members: new Map() };
 
     for (const member of c.members) {
@@ -42,10 +61,16 @@ export class TypeRegistry {
     }
 
     this.types.set(c.name, type);
+    if (visible || existingVisible) this.visibleTypes.add(c.name);
+  }
+
+  markVisible(name: string): void {
+    if (this.types.has(name)) this.visibleTypes.add(name);
   }
 
   get(name: string): TypeSymbol | undefined { return this.types.get(name); }
   has(name: string): boolean { return this.types.has(name); }
+  isVisible(name: string): boolean { return this.visibleTypes.has(name); }
   all(): TypeSymbol[] { return [...this.types.values()]; }
 
   memberOf(typeName: string, memberName: string): TypeMember | undefined {

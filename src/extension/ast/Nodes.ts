@@ -2,10 +2,12 @@ import { ASTNode } from "./ASTNode";
 import { Modifiers } from "./Modifiers";
 
 export interface TypeRef { name: string; genericArgs?: TypeRef[] }
-export interface ProgramNode extends ASTNode { kind: "Program"; declarations: DeclarationNode[] }
-export type DeclarationNode = VariableDeclarationNode | FunctionDeclarationNode | ClassDeclarationNode | EnumDeclarationNode;
+export interface ProgramNode extends ASTNode { kind: "Program"; declarations: TopLevelNode[] }
+export type TopLevelNode = DeclarationNode | ExpressionStatementNode;
+export type DeclarationNode = VariableDeclarationNode | FunctionDeclarationNode | ClassDeclarationNode | EnumDeclarationNode | ImportDeclarationNode;
 export interface StatementNode extends ASTNode { kind: string }
 export interface ExpressionNode extends ASTNode { kind: string; inferredType?: string }
+export interface ImportDeclarationNode extends ASTNode { kind: "ImportDeclaration"; path: string[]; wildcard: boolean }
 export interface VariableDeclarationNode extends StatementNode { kind: "VariableDeclaration"; name: string; type: TypeRef; initializer?: ExpressionNode; modifiers: Modifiers }
 export interface ParameterNode extends ASTNode { kind: "Parameter"; name: string; type: TypeRef }
 export interface FunctionDeclarationNode extends StatementNode { kind: "FunctionDeclaration"; name: string; returnType: TypeRef; parameters: ParameterNode[]; body?: BlockStatementNode; modifiers: Modifiers }

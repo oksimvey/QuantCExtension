@@ -1,1 +1,69 @@
-import{ClassDeclarationNode,FunctionDeclarationNode,ProgramNode,VariableDeclarationNode}from"../ast/Nodes";import{QCSymbol}from"./Symbol";import{SymbolKind}from"./SymbolKind";import{Scope}from"./Scope";export interface BindResult{scope:Scope;symbols:QCSymbol[];diagnostics:{start:number;end:number;message:string}[]}export class Binder{bind(p:ProgramNode):BindResult{const scope=new Scope(),symbols:QCSymbol[]=[],diagnostics:BindResult["diagnostics"]=[];const add=(s:QCSymbol)=>{if(!scope.define(s))diagnostics.push({start:s.declaration.start,end:s.declaration.end,message:"Duplicate declaration '"+s.name+"'."});else symbols.push(s)};for(const d of p.declarations){if(d.kind==="ClassDeclaration"){const c=d as ClassDeclarationNode;add({name:c.name,kind:SymbolKind.Class,declaration:c,typeName:c.name});for(const m of c.members)symbols.push({name:m.name,kind:m.kind==="FunctionDeclaration"?SymbolKind.Method:SymbolKind.Field,declaration:m,typeName:m.kind==="FunctionDeclaration"?(m as FunctionDeclarationNode).returnType.name:(m as VariableDeclarationNode).type.name,containerName:c.name})}else if(d.kind==="FunctionDeclaration"){const f=d as FunctionDeclarationNode;add({name:f.name,kind:SymbolKind.Function,declaration:f,typeName:f.returnType.name});for(const x of f.parameters)symbols.push({name:x.name,kind:SymbolKind.Parameter,declaration:x,typeName:x.type.name,containerName:f.name})}else if(d.kind==="VariableDeclaration"){const v=d as VariableDeclarationNode;add({name:v.name,kind:SymbolKind.Variable,declaration:v,typeName:v.type.name})}else add({name:d.name,kind:SymbolKind.Enum,declaration:d,typeName:d.name})}return{scope,symbols,diagnostics}}}
+import { ClassDeclarationNode, FunctionDeclarationNode, ProgramNode, VariableDeclarationNode } from "../ast/Nodes";
+import { QCSymbol } from "./Symbol";
+import { SymbolKind } from "./SymbolKind";
+import { Scope } from "./Scope";
+
+export interface BindResult {
+  scope: Scope;
+  symbols: QCSymbol[];
+  diagnostics: { start: number; end: number; message: string }[];
+}
+
+export class Binder {
+  bind(program: ProgramNode): BindResult {
+    const scope = new Scope();
+    const symbols: QCSymbol[] = [];
+    const diagnostics: BindResult["diagnostics"] = [];
+
+    const add = (symbol: QCSymbol) => {
+      if (!scope.define(symbol)) {
+        diagnostics.push({
+          start: symbol.declaration.start,
+          end: symbol.declaration.end,
+          message: `Duplicate declaration '${symbol.name}'.`
+        });
+      } else {
+        symbols.push(symbol);
+      }
+    };
+
+    for (const declaration of program.declarations) {
+      if (declaration.kind === "ImportDeclaration" || declaration.kind === "ExpressionStatement") continue;
+
+      if (declaration.kind === "ClassDeclaration") {
+        const c = declaration as ClassDeclarationNode;
+        add({ name: c.name, kind: SymbolKind.Class, declaration: c, typeName: c.name });
+        for (const member of c.members) {
+          symbols.push({
+            name: member.name,
+            kind: member.kind === "FunctionDeclaration" ? SymbolKind.Method : SymbolKind.Field,
+            declaration: member,
+            typeName: member.kind === "FunctionDeclaration"
+              ? (member as FunctionDeclarationNode).returnType.name
+              : (member as VariableDeclarationNode).type.name,
+            containerName: c.name
+          });
+        }
+      } else if (declaration.kind === "FunctionDeclaration") {
+        const fn = declaration as FunctionDeclarationNode;
+        add({ name: fn.name, kind: SymbolKind.Function, declaration: fn, typeName: fn.returnType.name });
+        for (const parameter of fn.parameters) {
+          symbols.push({
+            name: parameter.name,
+            kind: SymbolKind.Parameter,
+            declaration: parameter,
+            typeName: parameter.type.name,
+            containerName: fn.name
+          });
+        }
+      } else if (declaration.kind === "VariableDeclaration") {
+        const variable = declaration as VariableDeclarationNode;
+        add({ name: variable.name, kind: SymbolKind.Variable, declaration: variable, typeName: variable.type.name });
+      } else if (declaration.kind === "EnumDeclaration") {
+        add({ name: declaration.name, kind: SymbolKind.Enum, declaration, typeName: declaration.name });
+      }
+    }
+
+    return { scope, symbols, diagnostics };
+  }
+}

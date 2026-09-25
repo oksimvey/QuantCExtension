@@ -8,6 +8,7 @@ import {
 import { MutabilityType, VisibilityType } from "../ast/Modifiers";
 import { BUILTINS } from "../lexer/Keywords";
 import { QCDiagnostic } from "./Diagnostic";
+import { FlowTypeFact } from "../project/SourceFile";
 import { TypeRegistry } from "./TypeRegistry";
 import { TypeMember } from "./TypeSymbol";
 
@@ -24,12 +25,15 @@ interface ValueInfo {
   readonlyName?: string;
   callable?: CallableInfo;
   declaration?: VariableDeclarationNode;
+  dynamic?: boolean;
+  name?: string;
 }
 
 interface CheckContext {
   scopes: Map<string, ValueInfo>[];
   currentClass?: ClassDeclarationNode;
   currentFunction?: FunctionDeclarationNode;
+  scopeRanges: { start: number; end: number }[];
 }
 
 const INTEGER = new Set(["byte", "short", "int", "long", "ubyte", "ushort", "uint", "ulong", "char"]);
@@ -56,11 +60,15 @@ export class TypeChecker {
   private diagnostics: QCDiagnostic[] = [];
   private registry!: TypeRegistry;
   private source = "";
+  private flowFacts: FlowTypeFact[] = [];
+
+  getFlowFacts(): FlowTypeFact[] { return [...this.flowFacts]; }
 
   check(program: ProgramNode, registry: TypeRegistry, source = ""): QCDiagnostic[] {
     this.diagnostics = [];
     this.registry = registry;
     this.source = source;
+    this.flowFacts = [];
 
     for (const declaration of program.declarations) {
       if (declaration.kind === "ClassDeclaration") registry.registerClass(declaration as ClassDeclarationNode);
@@ -72,11 +80,13 @@ export class TypeChecker {
         const variable = declaration as VariableDeclarationNode;
         if (!root.has(variable.name)) {
           root.set(variable.name, {
-            typeName: variable.type.name,
+            typeName: variable.type.name === "auto" ? "unknown" : variable.type.name,
             assignable: true,
             readonly: variable.modifiers.mutability !== MutabilityType.Mutable,
             readonlyName: variable.name,
-            declaration: variable
+            declaration: variable,
+            dynamic: variable.type.name === "auto",
+            name: variable.name
           });
         }
       } else if (declaration.kind === "FunctionDeclaration") {
@@ -84,6 +94,7 @@ export class TypeChecker {
         if (!root.has(fn.name)) {
           root.set(fn.name, {
             typeName: fn.returnType.name,
+            name: fn.name,
             callable: {
               returnType: fn.returnType.name,
               parameters: fn.parameters.map(p => ({ name: p.name, typeName: p.type.name }))
@@ -93,13 +104,20 @@ export class TypeChecker {
       }
     }
 
+    const rootContext: CheckContext = {
+      scopes: [root],
+      scopeRanges: [{ start: program.start, end: program.end }]
+    };
+
     for (const declaration of program.declarations) {
       if (declaration.kind === "ClassDeclaration") {
         this.checkClass(declaration as ClassDeclarationNode, root);
       } else if (declaration.kind === "FunctionDeclaration") {
-        this.checkFunction(declaration as FunctionDeclarationNode, { scopes: [root] });
+        this.checkFunction(declaration as FunctionDeclarationNode, rootContext);
       } else if (declaration.kind === "VariableDeclaration") {
-        this.checkVariable(declaration as VariableDeclarationNode, { scopes: [root] }, false);
+        this.checkVariable(declaration as VariableDeclarationNode, rootContext, false);
+      } else if (declaration.kind === "ExpressionStatement") {
+        this.infer((declaration as ExpressionStatementNode).expression, rootContext);
       }
     }
 
@@ -107,9 +125,7 @@ export class TypeChecker {
   }
 
   private checkClass(cls: ClassDeclarationNode, root: Map<string, ValueInfo>): void {
-    if (cls.baseClass && !this.registry.has(cls.baseClass)) {
-      this.error(cls.start, cls.end, `Unknown base class '${cls.baseClass}'.`, "unknown-base-class");
-    }
+    if (cls.baseClass) this.checkType(cls.baseClass, cls.start, cls.end);
 
     const classScope = new Map<string, ValueInfo>();
     for (const member of this.registry.membersOf(cls.name)) {
@@ -135,9 +151,17 @@ export class TypeChecker {
 
     for (const member of cls.members) {
       if (member.kind === "VariableDeclaration") {
-        this.checkVariable(member as VariableDeclarationNode, { scopes: [root, classScope], currentClass: cls }, false);
+        this.checkVariable(member as VariableDeclarationNode, {
+          scopes: [root, classScope],
+          scopeRanges: [{ start: 0, end: cls.end }, { start: cls.start, end: cls.end }],
+          currentClass: cls
+        }, false);
       } else {
-        this.checkFunction(member as FunctionDeclarationNode, { scopes: [root, classScope], currentClass: cls });
+        this.checkFunction(member as FunctionDeclarationNode, {
+          scopes: [root, classScope],
+          scopeRanges: [{ start: 0, end: cls.end }, { start: cls.start, end: cls.end }],
+          currentClass: cls
+        });
       }
     }
   }
@@ -151,22 +175,32 @@ export class TypeChecker {
       if (functionScope.has(parameter.name)) {
         this.error(parameter.start, parameter.end, `Duplicate parameter '${parameter.name}'.`, "duplicate-parameter");
       } else {
-        functionScope.set(parameter.name, { typeName: parameter.type.name, assignable: true });
+        functionScope.set(parameter.name, { typeName: parameter.type.name, assignable: true, name: parameter.name });
       }
     }
 
+    const functionRange = fn.body ? { start: fn.body.start, end: fn.body.end } : { start: fn.start, end: fn.end };
     const context: CheckContext = {
       scopes: [...parent.scopes, functionScope],
+      scopeRanges: [...parent.scopeRanges, functionRange],
       currentClass: parent.currentClass,
       currentFunction: fn
     };
+
+    for (const parameter of fn.parameters) {
+      this.recordFlow(parameter.name, parameter.type.name, functionRange.start, context, false);
+    }
 
     if (fn.body) this.checkBlock(fn.body, context, false);
   }
 
   private checkBlock(block: BlockStatementNode, parent: CheckContext, createScope = true): void {
-    const context = createScope
-      ? { ...parent, scopes: [...parent.scopes, new Map<string, ValueInfo>()] }
+    const context: CheckContext = createScope
+      ? {
+          ...parent,
+          scopes: [...parent.scopes, new Map<string, ValueInfo>()],
+          scopeRanges: [...parent.scopeRanges, { start: block.start, end: block.end }]
+        }
       : parent;
 
     for (const statement of block.statements) this.checkStatement(statement, context);
@@ -223,7 +257,7 @@ export class TypeChecker {
       );
     }
 
-    let inferredType = variable.type.name;
+    let inferredType = variable.type.name === "auto" ? "unknown" : variable.type.name;
     if (variable.initializer) {
       const value = this.infer(variable.initializer, context);
       if (variable.type.name === "auto") {
@@ -241,20 +275,30 @@ export class TypeChecker {
       }
     }
 
-    if (!define) return;
+    const info: ValueInfo = {
+      typeName: inferredType,
+      assignable: true,
+      readonly: variable.modifiers.mutability !== MutabilityType.Mutable,
+      readonlyName: variable.name,
+      declaration: variable,
+      dynamic: variable.type.name === "auto",
+      name: variable.name
+    };
 
     const scope = context.scopes[context.scopes.length - 1];
-    if (scope.has(variable.name)) {
-      this.error(variable.start, variable.end, `Duplicate declaration '${variable.name}'.`, "duplicate-local");
+    if (define) {
+      if (scope.has(variable.name)) {
+        this.error(variable.start, variable.end, `Duplicate declaration '${variable.name}'.`, "duplicate-local");
+        return;
+      }
+      scope.set(variable.name, info);
     } else {
-      scope.set(variable.name, {
-        typeName: inferredType,
-        assignable: true,
-        readonly: variable.modifiers.mutability !== MutabilityType.Mutable,
-        readonlyName: variable.name,
-        declaration: variable
-      });
+      const existing = scope.get(variable.name);
+      if (existing) Object.assign(existing, info);
+      else scope.set(variable.name, info);
     }
+
+    this.recordFlow(variable.name, inferredType, variable.end, context, variable.type.name === "auto");
   }
 
   private checkReturn(node: ReturnStatementNode, context: CheckContext): void {
@@ -327,18 +371,28 @@ export class TypeChecker {
   }
 
   private inferIdentifier(node: IdentifierNode, context: CheckContext): ValueInfo {
-    for (let i = context.scopes.length - 1; i >= 0; i--) {
-      const value = context.scopes[i].get(node.name);
-      if (value) return value;
-    }
+    const value = this.resolveIdentifier(node.name, context);
+    if (value) return value;
 
-    if (this.registry.has(node.name)) return { typeName: node.name, classReference: true };
-    if (BUILTINS.has(node.name)) return { typeName: "builtin-function" };
+    if (this.registry.isVisible(node.name)) return { typeName: node.name, classReference: true, name: node.name };
+    if (this.registry.has(node.name)) {
+      this.error(node.start, node.end, `Type '${node.name}' is declared in another file but is not imported.`, "missing-import");
+      return { typeName: "unknown" };
+    }
+    if (BUILTINS.has(node.name)) return { typeName: "builtin-function", name: node.name };
 
     if (node.name !== "<error>") {
       this.error(node.start, node.end, `Unknown identifier '${node.name}'.`, "unknown-identifier");
     }
     return { typeName: "unknown" };
+  }
+
+  private resolveIdentifier(name: string, context: CheckContext): ValueInfo | undefined {
+    for (let i = context.scopes.length - 1; i >= 0; i--) {
+      const value = context.scopes[i].get(name);
+      if (value) return value;
+    }
+    return undefined;
   }
 
   private inferNew(node: NewExpressionNode, context: CheckContext): ValueInfo {
@@ -425,6 +479,24 @@ export class TypeChecker {
   }
 
   private inferAssignment(node: AssignmentExpressionNode, context: CheckContext): ValueInfo {
+    if (node.target.kind === "Identifier") {
+      const identifier = node.target as IdentifierNode;
+      const existing = this.resolveIdentifier(identifier.name, context);
+
+      if (!existing && node.operator === "=" && !this.registry.has(identifier.name) && !BUILTINS.has(identifier.name)) {
+        const value = this.infer(node.value, context);
+        const created: ValueInfo = {
+          typeName: value.typeName,
+          assignable: true,
+          dynamic: true,
+          name: identifier.name
+        };
+        context.scopes[context.scopes.length - 1].set(identifier.name, created);
+        this.recordFlow(identifier.name, value.typeName, node.end, context, true);
+        return { typeName: value.typeName };
+      }
+    }
+
     const target = this.infer(node.target, context);
     const value = this.infer(node.value, context);
 
@@ -437,6 +509,12 @@ export class TypeChecker {
         `Cannot assign to readonly '${target.readonlyName ?? "value"}'.`,
         "assign-const"
       );
+    }
+
+    if (target.dynamic && node.operator === "=" && !target.readonly) {
+      target.typeName = value.typeName;
+      if (target.name) this.recordFlow(target.name, value.typeName, node.end, context, true);
+      return { typeName: value.typeName };
     }
 
     if (!this.isAssignable(target.typeName, value.typeName)) {
@@ -678,9 +756,26 @@ export class TypeChecker {
   }
 
   private checkType(name: string, start: number, end: number): void {
-    if (name !== "auto" && !this.registry.has(name)) {
+    if (name === "auto") return;
+    if (!this.registry.has(name)) {
       this.error(start, end, `Unknown type '${name}'.`, "unknown-type");
+      return;
     }
+    if (!this.registry.isVisible(name)) {
+      this.error(start, end, `Type '${name}' is declared in another file but is not imported.`, "missing-import");
+    }
+  }
+
+  private recordFlow(name: string, typeName: string, offset: number, context: CheckContext, dynamic: boolean): void {
+    const range = context.scopeRanges[context.scopeRanges.length - 1] ?? { start: 0, end: Number.MAX_SAFE_INTEGER };
+    this.flowFacts.push({
+      name,
+      typeName,
+      offset,
+      scopeStart: range.start,
+      scopeEnd: range.end,
+      dynamic
+    });
   }
 
   private error(start: number, end: number, message: string, code: string): void {
